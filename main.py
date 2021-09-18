@@ -1,8 +1,10 @@
-import sys
 import os
 import random
+import time
+import datetime
 from PIL import Image
 
+print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 mazeList = []
 DIRECTION_DICT = {
     "up": None,
@@ -25,12 +27,18 @@ class Imager:
         self.width = maze.hallWallSum * maze.width + maze.wallWidth
         self.image = Image.new("1", (self.width, self.height))
         self.pixels = self.image.load()
-        self.data = [[None] * self.width for _ in range(self.height)]
+        self.data = [[-1] * self.width for _ in range(self.height)]
+        for i in range(self.height):
+            for j in range(self.width):
+                self.pixels[j, i] = 1
 
     def make_image(self):
-        for i in range(self.image.size[1]):
-            for j in range(self.image.size[0]):
-                self.pixels[j, i] = self.data[i][j]
+        for i in range(self.height):
+            for j in range(self.width):
+                if self.data[i][j] != -1:
+                    self.pixels[j, i] = self.data[i][j]
+                else:
+                    raise Exception("data was not set at: " + str(j) + ", " + str(i))
 
     def get_corresponding_cell_from_pixel(self, x, y):
         maze = self.parent
@@ -75,6 +83,40 @@ class Imager:
                             break
                     if not self.data[row_y][column_x] == 0:
                         self.data[row_y][column_x] = 1
+
+    def build_data_from_cell(self, cell, key):
+        hall_width = self.parent.hallWidth
+        wall_width = self.parent.wallWidth
+        hall_wall_sum = self.parent.hallWallSum
+        range_x_start = cell.x * hall_wall_sum
+        range_y_start = cell.y * hall_wall_sum
+        if key == "up" or key == "down":
+            range_x = 2 * wall_width + hall_width
+            range_y = wall_width
+            if key == "down":
+                range_y_start += hall_wall_sum
+        elif key == "left" or key == "right":
+            range_x = wall_width
+            range_y = 2 * wall_width + hall_width
+            if key == "right":
+                range_x_start += hall_wall_sum
+        else:
+            raise Exception("Invalid key")
+        if cell.wallList[key] == 1:
+            pixel_setting = 0
+        else:
+            pixel_setting = 1
+        for row_y in range(range_y):
+            for column_x in range(range_x):
+                top_or_bottom_check = row_y < wall_width or row_y >= hall_wall_sum
+                left_or_right_check = column_x < wall_width or column_x >= hall_wall_sum
+                pixel_x = range_x_start + column_x
+                pixel_y = range_y_start + row_y
+                if top_or_bottom_check and left_or_right_check:
+                    self.pixels[pixel_x, pixel_y] = 0
+                    continue
+                self.pixels[pixel_x, pixel_y] = pixel_setting
+        return
 
 
 class Cell:
@@ -130,10 +172,9 @@ class Maze:
         self.chanceToMakeShortcut = 0.001
         self.percentRangeOfExits = 0.5
         self.buildMode = 0
-        # 0: Latest cell | 1: First cell
-        # 2: Random cell in cell queue | 3: Completely random
-        # 1 and 3 do not give good mazes
-        self.recordVideo = 0
+        # 0: Latest cell | 1: First cell (Not a good maze)
+        # 2: Random cell in cell queue | 3: Completely random (Not a good maze)
+        self.recordVideo = False
         self.imageCounter = 0
         self.cellList = []
         self.cellQueue = []
@@ -169,21 +210,50 @@ class Maze:
                 if self.buildMode == 3:
                     self.cellQueue.append(current_cell)
             self.cellList[i][0].wallList["left"] = 1
+            self.imageHolder.build_data_from_cell(self.cellList[i][0], "left")
+            if self.recordVideo:
+                self.save_video()
             self.cellList[i][self.width - 1].wallList["right"] = 1
+            self.imageHolder.build_data_from_cell(self.cellList[i][self.width - 1], "right")
+            if self.recordVideo:
+                self.save_video()
         for cell in self.cellList[0]:
             cell.wallList["up"] = 1
+            self.imageHolder.build_data_from_cell(cell, "up")
+            if self.recordVideo:
+                self.save_video()
+
         for cell in self.cellList[-1]:
             cell.wallList["down"] = 1
+            self.imageHolder.build_data_from_cell(cell, "down")
+            if self.recordVideo:
+                self.save_video()
 
     def make_goals(self):
         width_range = self.width * self.percentRangeOfExits
         height_range = self.height * self.percentRangeOfExits
         if self.height >= self.width:
-            self.cellList[0][random.randrange(0, int(width_range))].wallList["up"] = 0
-            self.cellList[-1][random.randrange(int(self.width - width_range), self.width)].wallList["down"] = 0
+            random_x0 = random.randrange(0, int(width_range))
+            random_x1 = random.randrange(int(self.width - width_range), self.width)
+            self.cellList[0][random_x0].wallList["up"] = 0
+            self.imageHolder.build_data_from_cell(self.cellList[0][random_x0], "up")
+            if self.recordVideo:
+                self.save_video()
+            self.cellList[-1][random_x1].wallList["down"] = 0
+            self.imageHolder.build_data_from_cell(self.cellList[-1][random_x1], "down")
+            if self.recordVideo:
+                self.save_video()
         else:
-            self.cellList[random.randrange(0, int(height_range))][0].wallList["left"] = 0
-            self.cellList[random.randrange(int(self.height - height_range), self.height)][-1].wallList["right"] = 0
+            random_y0 = random.randrange(0, int(height_range))
+            random_y1 = random.randrange(int(self.height - height_range), self.height)
+            self.cellList[random_y0][0].wallList["left"] = 0
+            self.imageHolder.build_data_from_cell(self.cellList[random_y0][0], "left")
+            if self.recordVideo:
+                self.save_video()
+            self.cellList[random_y1][-1].wallList["right"] = 0
+            self.imageHolder.build_data_from_cell(self.cellList[random_y1][-1], "right")
+            if self.recordVideo:
+                self.save_video()
 
     def build_walls(self):
         if self.buildMode == 0:
@@ -201,34 +271,35 @@ class Maze:
             if cells_around[key].explored:
                 current_wall = next_cell.wallList[key]
                 connected_wall = cells_around[key].wallList[DICTION_OPPOSITE[key]]
-                if (current_wall != connected_wall) and (connected_wall is not None) and (current_wall is not None):
-                    raise Exception("Mismatch between connecting walls and neither were None")
-                elif (current_wall is None) and (connected_wall is not None):
-                    next_cell.wallList[key] = connected_wall
-                    considerations.pop(key)
-                    continue
-                elif (current_wall is not None) and (connected_wall is None):
-                    cells_around[key].wallList[DICTION_OPPOSITE[key]] = current_wall
-                    considerations.pop(key)
-                    continue
-                elif (current_wall is not None) and (connected_wall is not None):
+                if (current_wall is not None) and (connected_wall is not None):
+                    if current_wall != connected_wall:
+                        raise Exception("Mismatch between connecting walls and neither were None")
                     considerations.pop(key)
                     continue
                 elif random.random() >= self.chanceToMakeShortcut:
                     next_cell.wallList[key] = 1
                     considerations[key].wallList[DICTION_OPPOSITE[key]] = 1
+                    self.imageHolder.build_data_from_cell(next_cell, key)
                     considerations.pop(key)
+                    if self.recordVideo:
+                        self.save_video()
                     continue
                 else:
                     next_cell.wallList[key] = 0
                     considerations[key].wallList[DICTION_OPPOSITE[key]] = 0
+                    self.imageHolder.build_data_from_cell(next_cell, key)
                     considerations.pop(key)
+                    if self.recordVideo:
+                        self.save_video()
                     continue
         if not (len(considerations) == 0):
             chosen_key = list(considerations.keys())[random.randrange(0, len(considerations))]
             next_cell.wallList[chosen_key] = 0
             considerations[chosen_key].wallList[DICTION_OPPOSITE[chosen_key]] = 0
             considerations[chosen_key].explored = True
+            self.imageHolder.build_data_from_cell(next_cell, chosen_key)
+            if self.recordVideo:
+                self.save_video()
             if self.buildMode != 3:
                 self.cellQueue.append(considerations[chosen_key])
         else:
@@ -236,11 +307,13 @@ class Maze:
         return
 
     def build_maze(self, first_cell):
+        start = time.time()
         first_cell.explored = True
         self.cellQueue.append(first_cell)
         while not (len(self.cellQueue) == 0):
             self.build_walls()
         self.make_goals()
+        print("Done making maze! It took " + str(time.time() - start) + " seconds")
 
     def get_random_cell(self):
         rand_x = random.randint(0, firstMaze.width - 1)
@@ -258,8 +331,8 @@ class Maze:
 
 
 firstMaze = Maze()
-firstMaze.width = 50
-firstMaze.height = 50
+firstMaze.width = 400
+firstMaze.height = 400
 firstMaze.wallWidth = 1
 firstMaze.hallWidth = 1
 firstMaze.buildMode = 0
@@ -267,7 +340,4 @@ firstMaze.chanceToMakeShortcut = 0.001
 firstMaze.reload_maze()
 firstMaze.create_cell_list()
 firstMaze.build_maze(firstMaze.get_random_cell())
-firstMaze.check_cell_walls()
-firstMaze.imageHolder.build_data()
-firstMaze.imageHolder.make_image()
 firstMaze.save()
