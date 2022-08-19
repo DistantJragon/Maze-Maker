@@ -25,13 +25,13 @@ class Imager:
         self.parent = maze
         self.height = maze.hallWallSum * maze.height + maze.wallWidth
         self.width = maze.hallWallSum * maze.width + maze.wallWidth
-        self.image = Image.new("1", (self.width, self.height))
+        self.image = Image.new("L", (self.width, self.height))
         self.pixels = self.image.load()
         self.data = [[-1] * self.width for _ in range(self.height)]
         if self.pixels is not None:
             for i in range(self.height):
                 for j in range(self.width):
-                    self.pixels[j, i] = 1
+                    self.pixels[j, i] = 255 - 64
 
     def make_image(self):
         for i in range(self.height):
@@ -89,34 +89,46 @@ class Imager:
         hall_width = self.parent.hallWidth
         wall_width = self.parent.wallWidth
         hall_wall_sum = self.parent.hallWallSum
-        range_x_start = cell.x * hall_wall_sum
-        range_y_start = cell.y * hall_wall_sum
+        cell_start_x = cell.x * hall_wall_sum
+        cell_start_y = cell.y * hall_wall_sum
+        x_cell_offset = 0
+        y_cell_offset = 0
         if key == "up" or key == "down":
             range_x = 2 * wall_width + hall_width
             range_y = wall_width
             if key == "down":
-                range_y_start += hall_wall_sum
+                y_cell_offset = hall_wall_sum
         elif key == "left" or key == "right":
             range_x = wall_width
             range_y = 2 * wall_width + hall_width
             if key == "right":
-                range_x_start += hall_wall_sum
+                x_cell_offset = hall_wall_sum
+        elif key == "middle":
+            range_x = hall_width
+            range_y = hall_width
+            x_cell_offset = wall_width
+            y_cell_offset = wall_width
         else:
             raise Exception("Invalid key")
-        if cell.wallList[key] == 1:
+        if cell.wallList.get(key, 0) == 1:
             pixel_setting = 0
         else:
             pixel_setting = 1
         for row_y in range(range_y):
             for column_x in range(range_x):
-                top_or_bottom_check = row_y < wall_width or row_y >= hall_wall_sum
-                left_or_right_check = column_x < wall_width or column_x >= hall_wall_sum
-                pixel_x = range_x_start + column_x
-                pixel_y = range_y_start + row_y
-                if top_or_bottom_check and left_or_right_check:
+                relation_to_cell_x = column_x + x_cell_offset
+                relation_to_cell_y = row_y + y_cell_offset
+                top_or_bottom_check = (relation_to_cell_y < wall_width) or (relation_to_cell_y >= hall_wall_sum)
+                left_or_right_check = (relation_to_cell_x < wall_width) or (relation_to_cell_x >= hall_wall_sum)
+                corner_check = top_or_bottom_check and left_or_right_check
+                pixel_x = cell_start_x + relation_to_cell_x
+                pixel_y = cell_start_y + relation_to_cell_y
+                if (not corner_check) and pixel_setting == 1:
+                    self.pixels[pixel_x, pixel_y] = 255
+                elif (not corner_check) and pixel_setting == 0:
                     self.pixels[pixel_x, pixel_y] = 0
-                    continue
-                self.pixels[pixel_x, pixel_y] = pixel_setting
+                elif corner_check and pixel_setting == 0:
+                    self.pixels[pixel_x, pixel_y] = 0
         return
 
 
@@ -180,8 +192,6 @@ class Maze:
         self.cellList = []
         self.cellQueue = []
         self.imageHolder = Imager(self)
-        self.startCoordinates = []
-        self.endCoordinates = []
 
     def save(self):
         try:
@@ -214,19 +224,18 @@ class Maze:
             self.imageHolder.build_data_from_cell(self.cellList[i][0], "left")
             if self.recordVideo:
                 self.save_video()
-            self.cellList[i][self.width - 1].wallList["right"] = 1
+            self.cellList[i][-1].wallList["right"] = 1
             self.imageHolder.build_data_from_cell(self.cellList[i][self.width - 1], "right")
             if self.recordVideo:
                 self.save_video()
-        for cell in self.cellList[0]:
-            cell.wallList["up"] = 1
-            self.imageHolder.build_data_from_cell(cell, "up")
+
+        for j in range(self.width):
+            self.cellList[0][j].wallList["up"] = 1
+            self.imageHolder.build_data_from_cell(self.cellList[0][j], "up")
             if self.recordVideo:
                 self.save_video()
-
-        for cell in self.cellList[-1]:
-            cell.wallList["down"] = 1
-            self.imageHolder.build_data_from_cell(cell, "down")
+            self.cellList[-1][j].wallList["down"] = 1
+            self.imageHolder.build_data_from_cell(self.cellList[-1][j], "down")
             if self.recordVideo:
                 self.save_video()
 
@@ -294,7 +303,7 @@ class Maze:
                         self.save_video()
                     continue
         if not (len(considerations) == 0):
-            chosen_key = list(considerations.keys())[random.randrange(0, len(considerations))]
+            chosen_key = random.choice(list(considerations.keys()))
             next_cell.wallList[chosen_key] = 0
             considerations[chosen_key].wallList[DICTION_OPPOSITE[chosen_key]] = 0
             considerations[chosen_key].explored = True
@@ -303,6 +312,9 @@ class Maze:
                 self.save_video()
             if self.buildMode != 3:
                 self.cellQueue.append(considerations[chosen_key])
+            self.imageHolder.build_data_from_cell(considerations[chosen_key], "middle")
+            if self.recordVideo:
+                self.save_video()
         else:
             self.cellQueue.remove(next_cell)
         return
@@ -311,6 +323,9 @@ class Maze:
         start = time.time()
         first_cell.explored = True
         self.cellQueue.append(first_cell)
+        self.imageHolder.build_data_from_cell(first_cell, "middle")
+        if self.recordVideo:
+            self.save_video()
         while not (len(self.cellQueue) == 0):
             self.build_walls()
         self.make_goals()
