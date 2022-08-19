@@ -28,9 +28,10 @@ class Imager:
         self.image = Image.new("1", (self.width, self.height))
         self.pixels = self.image.load()
         self.data = [[-1] * self.width for _ in range(self.height)]
-        for i in range(self.height):
-            for j in range(self.width):
-                self.pixels[j, i] = 1
+        if self.pixels is not None:
+            for i in range(self.height):
+                for j in range(self.width):
+                    self.pixels[j, i] = 1
 
     def make_image(self):
         for i in range(self.height):
@@ -337,7 +338,7 @@ firstMaze.wallWidth = 1
 firstMaze.hallWidth = 1
 firstMaze.buildMode = 0
 firstMaze.chanceToMakeShortcut = 0.001
-firstMaze.recordVideo = True
+# firstMaze.recordVideo = True
 firstMaze.reload_maze()
 firstMaze.create_cell_list()
 firstMaze.build_maze(firstMaze.get_random_cell())
